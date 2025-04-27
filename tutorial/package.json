@@ -1,0 +1,37 @@
+{
+  "name": "tutorial",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "ingest": "ts-node src/ingest.ts",
+    "query": "ts-node src/query.ts",
+    "lint": "eslint src --ext .ts",
+    "test": "echo 'no tests'"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^0.10.0",
+    "@llamaindex/openai": "^0.3.4",
+    "@qdrant/js-client-rest": "^1.14.0",
+    "dotenv": "^16.5.0",
+    "llamaindex": "^0.10.2",
+    "pdfjs-lib": "^0.0.149"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.27",
+    "@typescript-eslint/eslint-plugin": "^7.5.0",
+    "@typescript-eslint/parser": "^7.5.0",
+    "eslint": "^8.57.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-airbnb-typescript": "^18.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-jsdoc": "^46.9.2",
+    "eslint-plugin-unused-imports": "^3.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.3"
+  }
+}

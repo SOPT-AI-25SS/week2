@@ -1,1 +1,4 @@
 .idea/
+tutorial/.env
+tutorial/node_modules/
+tutorial/dist/
