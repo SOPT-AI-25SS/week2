@@ -19,6 +19,7 @@
     "@google/genai": "^0.10.0",
     "@langchain/core": "^0.3.49",
     "@langchain/textsplitters": "^0.1.0",
+    "@llamaindex/google": "^0.2.4",
     "@llamaindex/openai": "^0.3.4",
     "@llamaindex/qdrant": "^0.0.4",
     "@qdrant/js-client-rest": "^1.14.0",

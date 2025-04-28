@@ -115,18 +115,14 @@ export async function embedText(
 
   if (embedCache.has(key)) return embedCache.get(key)!;
 
-  // The official @google/genai SDK (v0.10+) exposes the text-embedding endpoint
-  // via `ai.models.embedContent(...)`.
-  // See: https://ai.google.dev/gemini-api/docs/get-text-embeddings
 
-  const res = await gemini().models.embedContent({
+  // Cast to any to bypass overly strict SDK typing.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const res: any = await (gemini() as any).models.embedContent({
     model,
-    contents: text,
-    config: {
-      taskType,
-      outputDimensionality,
-    },
-  });
+    contents: [text],
+    config: { taskType, outputDimensionality },
+  } as any);
 
   const vector = Float32Array.from(res.embeddings?.[0]?.values ?? []);
   embedCache.set(key, vector);

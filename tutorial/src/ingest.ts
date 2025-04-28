@@ -26,7 +26,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 const COLLECTION_NAME = 'pdf_chat_embeddings';
-const VECTOR_SIZE = 768;
+const VECTOR_SIZE = 3072;
 
 // -------------------------------------------------------------------------
 // Simple recursive file discovery
@@ -74,7 +74,21 @@ let pdfjsModule: PdfJs | undefined;
 
 async function loadPdfjs(): Promise<PdfJs> {
   if (!pdfjsModule) {
-    const mod: any = await import('pdfjs-dist/legacy/build/pdf.js');
+    // pdfjs-dist v4 ships ESM bundles as .mjs (no .js). Use dynamic import so
+    // it works regardless of exact file extension present in installed
+    // version.  Try legacy build first (includes CMaps), fallback to regular
+    // build.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    let mod: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore – path checked at runtime
+      mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    } catch {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      mod = await import('pdfjs-dist/build/pdf.mjs');
+    }
     pdfjsModule = (mod.getDocument ? mod : mod.default) as PdfJs;
   }
   return pdfjsModule;
@@ -108,14 +122,23 @@ async function main(): Promise<void> {
   await ensureCollection();
   const client = qdrant();
 
-  // Initialize text splitter once (recommended generic parameters)
-  // Default separators: ["\n\n", "\n", " ", ""], which keeps paragraphs
-  // → sentences → words together as much as possible while respecting the
-  // desired chunk size.
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-  });
+  // -----------------------------------------------------------------------
+  // Define multiple text-splitting "recipes" so that we can experiment with
+  // retrieval granularity at query-time.
+  // -----------------------------------------------------------------------
+
+  const RECIPES = [
+    { name: 'r1', chunkSize: 1000, chunkOverlap: 200 },
+    { name: 'r2', chunkSize: 2048, chunkOverlap: 400 },
+  ] as const;
+
+  // Pre-create a splitter per recipe (these are lightweight objects).
+  const splitters = Object.fromEntries(
+    RECIPES.map((r) => [r.name, new RecursiveCharacterTextSplitter({
+      chunkSize: r.chunkSize,
+      chunkOverlap: r.chunkOverlap,
+    })]),
+  ) as Record<string, RecursiveCharacterTextSplitter>;
 
   let processed = 0;
 
@@ -130,40 +153,43 @@ async function main(): Promise<void> {
       fileText = await fs.readFile(p, 'utf8');
     }
 
-    // Split the full file text into semantically coherent chunks using the
-    // RecursiveCharacterTextSplitter.  We operate on raw strings here to avoid
-    // bringing in additional LangChain dependencies for Document objects.
-    const chunks = await splitter.splitText(fileText);
+    // Process each recipe separately so we can store multiple granularities.
+    for (const recipe of RECIPES) {
+      const splitter = splitters[recipe.name];
+      const chunks = await splitter.splitText(fileText);
 
-    // eslint-disable-next-line no-restricted-syntax
-    for (const chunk of chunks) {
-      const vector = await embedText(chunk);
+      // eslint-disable-next-line no-restricted-syntax
+      for (const chunk of chunks) {
+        const vector = await embedText(chunk);
 
-      // Respect Gemini rate-limits – pause briefly after each embedding call.
-      await sleep(1000);
+        // Respect Gemini rate-limits – pause briefly after each embedding call.
+        await sleep(1000);
 
-      // Qdrant point IDs must be either an unsigned integer or a UUID.
-      // We derive a deterministic UUIDv5 from the file path + chunk text so
-      // that rerunning the ingester is idempotent.
-      const pointId = uuidv5(`${p}:${chunk}`, uuidv5.URL);
+        // Qdrant point IDs must be either an unsigned integer or a UUID.
+        // Deterministic UUID so re-ingesting is idempotent.
+        const pointId = uuidv5(`${recipe.name}:${p}:${chunk}`, uuidv5.URL);
 
-      await client.upsert(COLLECTION_NAME, {
-        wait: false,
-        points: [
-          {
-            id: pointId,
-            vector: Array.from(vector),
-            payload: {
-              text: chunk,
-              file: p,
-              // Additional metadata for future use.
-              char_count: chunk.length,
+        await client.upsert(COLLECTION_NAME, {
+          wait: false,
+          points: [
+            {
+              id: pointId,
+              vector: Array.from(vector),
+              payload: {
+                text: chunk,
+                file: p,
+                recipe: recipe.name,
+                chunk_size: recipe.chunkSize,
+                chunk_overlap: recipe.chunkOverlap,
+                char_count: chunk.length,
+              },
             },
-          },
-        ],
-      });
-      processed += 1;
-      console.log(`Processed ${processed} chunks`);
+          ],
+        });
+
+        processed += 1;
+        console.log(`Processed ${processed} chunks (recipe=${recipe.name})`);
+      }
     }
   }
 
