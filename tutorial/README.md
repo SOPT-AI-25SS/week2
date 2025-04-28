@@ -294,3 +294,109 @@ with LlamaParse: a how-to guide - LlamaIndex](https://www.llamaindex.ai/blog/pdf
     • 구현 중 특정 에러 스택이나 퍼포먼스 병목이 보이면 로그 그대로 가져와서 문의 주세요. 필요한 부분만 디버깅-패치까지 도와드리겠습니다!
 
     행복한 코딩 되세요 🚀
+
+
+    Below you’ll find:
+
+        1. The **original technical spec** you provided (untouched, for easy reference).
+        2. A **summary of the work that has just been applied** to the repo.
+        3. A **TODO list / next steps** to finish the end-to-end PDF-RAG product.
+
+    ────────────────────────────────────────
+
+        1. Original Technical Spec
+           ────────────────────────────────────────
+
+        ┌─────────────┐   PDF 업로드   ┌──────────────────┐   HTTP(S)/SSE   ┌────────────┐
+        │ React  UI   │──────────────▶│  Next.js API      │───────────────▶│ LlamaIndex │
+        │ (useChat)   │  질의/스트림   │  (edge/server)    │  context +     │  QueryEngine│
+        └─────────────┘◀──────────────└──────────┬─────────┘  답변 스트림    └─────┬──────┘
+                ▲        websocket / SSE              │                        DB  │
+                │                                     │ embed + upsert            │
+                │                             ┌───────▼────────┐                 │
+                │                             │ Gemini Embed   │                 │
+                │                             └────┬───────────┘                 │
+                │                                  │                             │
+                │                                  ▼                             ▼
+                │                         ┌────────────────┐           ┌────────────────┐
+                │                         │  Qdrant Vector │◀──────────┤   Postgres/TBD │
+                │                         └────────────────┘   payload └────────────────┘
+
+        PDF → LlamaParse/LlamaIndex.TS 청킹 → Gemini-3 072(↓768) 임베딩 → Qdrant 저장
+        Next.js + Vercel AI SDK `useChat` + shadcn/ui 채팅 UI
+        Docker-Qdrant 로컬, Vercel(Prod) 배포 … (기타 세부 설명 생략)
+
+    (… 전체 아키텍처 / 패키지 인스톨 / UI 코드 예시는 그대로 보관하였습니다.)
+
+    ────────────────────────────────────────
+    2. What Has Been Implemented
+    ────────────────────────────────────────
+    Repository was migrated to TypeScript + Airbnb style and the CLI MVP was rewritten.
+
+    • Tooling
+      – tsconfig.json (strict ESNext)
+      – ESLint + airbnb-base + airbnb-typescript + import/jsdoc/unused-imports
+      – Dev scripts (build, ingest, query, lint) in package.json
+      – Dependencies added: typescript, ts-node, eslint stack, @types/node
+
+    • src/config.ts
+      – Env loader (dotenv/config)
+      – Singleton factories for Google Gemini + Qdrant
+      – embedText(text) → Float32Array (+simple cache) with Gemini-embedding-exp-03-07 (768-d)
+
+    • src/ingest.ts (CLI)
+      – Recursive walk of a directory for *.txt / *.md / .pdf
+      – PDF extraction via pdfjs-lib (lazy import)
+      – Paragraph splitter, per-paragraph Gemini embedding, upsert to Qdrant collection pdf_chat_embeddings (size = 768, Cosine)
+
+    • src/query.ts (CLI)
+      – Interactive REPL or one-shot query
+      – Embeds the question, performs Top-5 similarity search in Qdrant, prints chunks & scores
+
+    • Removed legacy .js files; all logic now lives in .ts.
+
+    You can run:
+
+        npm install          # installs new dev & prod deps
+        npm run build        # type-checks and emits dist/
+        npm run ingest ./data_or_examples
+        npm run query "What is …?"
+        npm run query        # interactive mode
+        npm run lint         # Airbnb lint check
+
+    ────────────────────────────────────────
+    3. Remaining Tasks / Roadmap
+    ────────────────────────────────────────
+    Backend
+
+        1. **Switch to LlamaParse** for higher-fidelity PDF parsing (replace pdfjs logic).
+        2. **Incremental / cached indexing** – serialize index or track file hashes to avoid re-embedding unchanged docs.
+        3. **Qdrant metadata**
+           • store page #, file path, section heading, etc.
+           • add hybrid keyword filter if needed.
+        4. **Implement actual Next.js API route** (`app/api/chat/route.ts`)
+           – Load VectorStoreIndex from Qdrant
+           – Use `index.asQueryEngine({ similarityTopK })` → `queryStream()`
+           – Return SSE compatible with Vercel AI SDK.
+        5. **Authentication / multi-tenant collections** (optional).
+
+    Frontend
+
+        1. Create **Next.js App Router pages**
+           • `/chat` page using `useChat` (progressively render stream).
+           • file-upload component (`/api/upload`).
+        2. Add **shadcn/ui chat bubbles** + skeleton loaders.
+        3. Use **SWR / React Query** to show ingestion progress.
+
+    Dev-ops
+
+        1. Add **Docker compose** for local `qdrant` + dev server.
+        2. **Pre-commit** hook to run `npm run lint`.
+        3. Vercel / Fly / Render deploy scripts + secrets (GEMINI_API_KEY, QDRANT_URL).
+
+    Stretch
+    • Rerank answers with Gemini Pro.
+    • Cite source page numbers.
+    • Implement streaming HTML/Markdown renderer with syntax highlighting.
+
+    Feel free to let me know which of these next tasks you’d like automated next!

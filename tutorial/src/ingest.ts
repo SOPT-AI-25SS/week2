@@ -4,11 +4,26 @@
  * ingest.ts – walk a directory, read .txt/.md/.pdf files, embed each paragraph
  * with Gemini, and upsert into Qdrant.
  */
-
 import fs from 'node:fs/promises';
 import path, { extname, join } from 'node:path';
 
-import { embedText, qdrant } from './config.js';
+// -------------------------------------------------------------------------
+// Text splitting (LangChain RecursiveCharacterTextSplitter)
+// -------------------------------------------------------------------------
+
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+
+import { embedText, qdrant } from './config.ts';
+import { v5 as uuidv5 } from 'uuid';
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+
+/** Simple promise-based sleep helper. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const COLLECTION_NAME = 'pdf_chat_embeddings';
 const VECTOR_SIZE = 768;
@@ -20,11 +35,9 @@ const VECTOR_SIZE = 768;
 async function walk(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files: string[] = [];
-  // eslint-disable-next-line no-restricted-syntax
   for (const entry of entries) {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) {
-      // eslint-disable-next-line no-await-in-loop
       files.push(...(await walk(p)));
     } else {
       const ext = extname(entry.name).toLowerCase();
@@ -54,16 +67,24 @@ async function ensureCollection(): Promise<void> {
 // PDF text extractor using pdfjs-lib (lazy loaded)
 // -------------------------------------------------------------------------
 
-let pdfjs: typeof import('pdfjs-lib') | undefined;
+// Switch to pdfjs-dist (latest) legacy build – provides getDocument API.
+type PdfJs = { getDocument: (arg: any) => any };
 
-async function loadPdfjs() {
-  if (!pdfjs) pdfjs = await import('pdfjs-lib');
-  return pdfjs!;
+let pdfjsModule: PdfJs | undefined;
+
+async function loadPdfjs(): Promise<PdfJs> {
+  if (!pdfjsModule) {
+    const mod: any = await import('pdfjs-dist/legacy/build/pdf.js');
+    pdfjsModule = (mod.getDocument ? mod : mod.default) as PdfJs;
+  }
+  return pdfjsModule;
 }
 
-async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
-  const pdfModule = await loadPdfjs();
-  const doc = await pdfModule.getDocument({ data: buffer }).promise;
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { getDocument } = await loadPdfjs();
+  // pdfjs-dist requires Uint8Array, not Node.js Buffer.
+  const uint8array = new Uint8Array(buffer);
+  const doc = await getDocument({ data: uint8array }).promise;
   let text = '';
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
     const page = await doc.getPage(pageNum);
@@ -87,6 +108,15 @@ async function main(): Promise<void> {
   await ensureCollection();
   const client = qdrant();
 
+  // Initialize text splitter once (recommended generic parameters)
+  // Default separators: ["\n\n", "\n", " ", ""], which keeps paragraphs
+  // → sentences → words together as much as possible while respecting the
+  // desired chunk size.
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize: 1000,
+    chunkOverlap: 200,
+  });
+
   let processed = 0;
 
   // eslint-disable-next-line no-restricted-syntax
@@ -100,25 +130,40 @@ async function main(): Promise<void> {
       fileText = await fs.readFile(p, 'utf8');
     }
 
-    const paragraphs = fileText.split(/\n{2,}/g).filter(Boolean);
+    // Split the full file text into semantically coherent chunks using the
+    // RecursiveCharacterTextSplitter.  We operate on raw strings here to avoid
+    // bringing in additional LangChain dependencies for Document objects.
+    const chunks = await splitter.splitText(fileText);
+
     // eslint-disable-next-line no-restricted-syntax
-    for (const para of paragraphs) {
-      const vector = await embedText(para);
+    for (const chunk of chunks) {
+      const vector = await embedText(chunk);
+
+      // Respect Gemini rate-limits – pause briefly after each embedding call.
+      await sleep(1000);
+
+      // Qdrant point IDs must be either an unsigned integer or a UUID.
+      // We derive a deterministic UUIDv5 from the file path + chunk text so
+      // that rerunning the ingester is idempotent.
+      const pointId = uuidv5(`${p}:${chunk}`, uuidv5.URL);
+
       await client.upsert(COLLECTION_NAME, {
         wait: false,
         points: [
           {
-            id: `${p}_${processed}`,
+            id: pointId,
             vector: Array.from(vector),
             payload: {
-              text: para,
+              text: chunk,
               file: p,
+              // Additional metadata for future use.
+              char_count: chunk.length,
             },
           },
         ],
       });
       processed += 1;
-      if (processed % 20 === 0) console.log(`…${processed}`);
+      console.log(`Processed ${processed} chunks`);
     }
   }
 

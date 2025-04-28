@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
+    "dev": "next dev",
     "ingest": "ts-node src/ingest.ts",
     "query": "ts-node src/query.ts",
     "lint": "eslint src --ext .ts",
@@ -14,12 +15,20 @@
   "description": "",
   "type": "module",
   "dependencies": {
+    "@ai-sdk/react": "^1.2.9",
     "@google/genai": "^0.10.0",
+    "@langchain/core": "^0.3.49",
+    "@langchain/textsplitters": "^0.1.0",
     "@llamaindex/openai": "^0.3.4",
+    "@llamaindex/qdrant": "^0.0.4",
     "@qdrant/js-client-rest": "^1.14.0",
     "dotenv": "^16.5.0",
     "llamaindex": "^0.10.2",
-    "pdfjs-lib": "^0.0.149"
+    "next": "^14.1.0",
+    "pdfjs-dist": "^4.1.392",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.27",

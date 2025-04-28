@@ -6,19 +6,19 @@
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
-import { embedText, qdrant } from './config.js';
+import { embedText, qdrant } from './config.ts';
 
 const COLLECTION_NAME = 'pdf_chat_embeddings';
 
 async function search(question: string) {
   const vec = await embedText(question);
   const client = qdrant();
-  const res = await client.search(COLLECTION_NAME, {
+  const res: any = await client.search(COLLECTION_NAME, {
     vector: Array.from(vec),
     limit: 5,
     with_payload: true,
   });
-  return res.result ?? [];
+  return res.result ?? res ?? [];
 }
 
 async function interactive(): Promise<void> {

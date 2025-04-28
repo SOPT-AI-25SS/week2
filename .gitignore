@@ -2,3 +2,5 @@
 tutorial/.env
 tutorial/node_modules/
 tutorial/dist/
+.next/
+.env
