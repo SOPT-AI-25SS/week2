@@ -1,3 +1,9 @@
+# Start
+```
+https://aistudio.google.com/ 에 들어가서 API Key를 발급받습니다
+docker 설치 하고,  docker run -p 6333:6333 qdrant/qdrant 해주세요.
+```
+
 # Architecture
 ```
 ┌─────────────┐   PDF 업로드   ┌──────────────────┐   HTTP(S)/SSE   ┌────────────┐

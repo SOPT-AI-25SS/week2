@@ -1,5 +1,16 @@
 # Week 2: RAG 기본 이해하기
 ## 공통 개념 이해하기
+* [rag.md](docs%2Frag.md) 
 
-## 개발하기
-* Google Vertex RAG Studio
+## 과제 (개발자)
+1. 튜토리얼에 있는 코드는 Interactive Shell 코드입니다. 각 코드의 역할을 이해하고 어떻게 동작하는지 다이어그램을 그리세요.
+* [tutorial](tutorial)
+2. 다음 과제 중 1개를 선택하여 진행하세요.
+* [1번 과제] 현재 튜토리얼 폴더에는 R, A, G 중 G 즉 LLM 생성이 빠져 있습니다. 이 부분을 채워서 완전하게 LLM 답변을 만들어주세요.
+* [2번 과제] Vercel의 AI SDK를 이용하여 프론트엔드에서 동작하는 Next.js 리액트 애플리케이션을 만들어주세요. [참고: Vercel AI SDK](https://sdk.vercel.ai/docs/guides/rag-chatbot)
+
+## 과제 (기획자)
+1. RAG의 기본 개념에 대해 스스로의 언어로 풀이하는 아티클 1개를 작성하세요. 글감에는 다음이 포함되어야 합니다.
+* 비개발자도 이해할 수 있게 RAG 개념을 설명하기
+* RAG를 통하여 할 수 있는 비즈니스 아이디어
+* RAG 업체들의 특징과 제품 특장점 조사해서 소개하기
